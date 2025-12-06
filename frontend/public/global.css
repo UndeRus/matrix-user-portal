@@ -1,0 +1,16 @@
+
+dy {
+  font-family: sans-serif;
+  margin: 2rem;
+  background-color: #f7f7f7;
+}
+
+input, button {
+  margin: 0.5rem 0;
+  padding: 0.5rem;
+}
+
+button {
+  cursor: pointer;
+}
+

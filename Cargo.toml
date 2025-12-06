@@ -1,0 +1,17 @@
+[package]
+name = "matrix-user-portal"
+version = "0.1.0"
+edition = "2024"
+build = "build.rs"
+
+[dependencies]
+axum = {version = "0.7", features = ["macros"]}
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+reqwest = { version = "0.12", features = ["json"] }
+tokio = { version = "1", features = ["full"] }
+dotenvy = { version = "0.15.7", features = ["clap"] }
+clap = { version = "4.5.53", features = ["derive", "env"] }
+
+[build-dependencies]
+anyhow = "1.0"
