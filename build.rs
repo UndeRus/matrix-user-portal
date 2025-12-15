@@ -39,14 +39,9 @@ fn main() -> anyhow::Result<()> {
     println!("Generating static...");
     // 2. Пути к итоговым файлам
     let build_dir = frontend_dir.join("public/build");
-    println!("1");
     let index_html_path = frontend_dir.join("public/index.html");
-    println!("2");
     let js_path = build_dir.join("bundle.js");
-    //let css_path = build_dir.join("bundle.css");
-    println!("3");
-    let css_path = frontend_dir.join("public/global.css");
-    println!("4");
+    let css_path = build_dir.join("bundle.css");
 
     // 3. Читаем файлы
     let index_html = fs::read_to_string(index_html_path)?;
