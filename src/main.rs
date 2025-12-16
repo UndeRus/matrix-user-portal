@@ -6,17 +6,19 @@ use axum::{
 };
 use axum_csrf::{CsrfConfig, CsrfLayer, CsrfToken};
 use clap::Parser;
-use rand::{Rng, distr::Alphanumeric, rng};
 use reqwest::StatusCode;
-use rocksdb::{ColumnFamilyDescriptor, DB, IteratorMode, Options};
 use serde::Deserialize;
-use std::{net::SocketAddr, sync::Arc};
+use std::net::SocketAddr;
 
+mod db;
 mod state;
 mod static_files;
 use static_files::{CSS, INDEX_HTML, JS};
 
-use crate::state::{AppState, Args};
+use crate::{
+    db::InvitesRepo,
+    state::{AppState, Args},
+};
 
 #[derive(Deserialize)]
 struct RegisterRequest {
@@ -39,23 +41,9 @@ struct AdminRequest {
     admin_token: String,
 }
 
-fn open_db() -> DB {
-    let mut opts = Options::default();
-    opts.create_if_missing(true);
-    opts.create_missing_column_families(true);
-
-    let cf_invites = ColumnFamilyDescriptor::new("invites", Options::default());
-
-    let db = DB::open_cf_descriptors(&opts, "portaldb", vec![cf_invites]).unwrap();
-
-    return db;
-}
-
 #[tokio::main]
 async fn main() {
     let csrf_layer = CsrfLayer::new(CsrfConfig::default());
-
-    let db = open_db();
 
     dotenvy::dotenv().expect("Failed to load env vars");
     let args = Args::parse();
@@ -63,7 +51,7 @@ async fn main() {
     let state = AppState {
         matrix_server_url: args.matrix_server_url,
         matrix_reg_token: args.matrix_reg_token,
-        db: Arc::new(db),
+        repo: InvitesRepo::new(),
         admin_token: args.admin_token,
     };
 
@@ -121,13 +109,19 @@ async fn register(
     if token.verify(&payload.csrf_token).is_err() {
         return (StatusCode::FORBIDDEN, "CSRF invalid".to_owned());
     }
-    let db = state.db.clone();
-    let cf = db.cf_handle("invites").unwrap();
 
-    if let Ok(Some(invite_is_active)) = db.get_cf(&cf, format!("INVITE:{}", payload.invite_code)) {
-        if invite_is_active == &[1] {
-            return (StatusCode::FORBIDDEN, "Invite is already used".to_string());
+    if let Some(invite_is_active) = state.repo.check_invite(&payload.invite_code) {
+        if invite_is_active {
+            return (
+                StatusCode::FORBIDDEN,
+                "Invite is wrong or already used".to_string(),
+            );
         }
+    } else {
+        return (
+            StatusCode::FORBIDDEN,
+            "Invite is wrong or already used".to_string(),
+        );
     }
 
     let token = state.matrix_reg_token;
@@ -154,9 +148,7 @@ async fn register(
         Err(e) => format!("Request failed: {}", e),
     };
 
-
-    db.put_cf(&cf, format!("INVITE:{}", payload.invite_code), &[1]).unwrap();
-
+    state.repo.use_invite(&payload.invite_code);
     (StatusCode::OK, response)
 }
 
@@ -242,14 +234,7 @@ async fn generate_invite(
     if payload.admin_token != state.admin_token {
         return (StatusCode::FORBIDDEN, "ERRROR".to_owned());
     }
-
-    let db = state.db.clone();
-    let cf = db.cf_handle("invites").unwrap();
-    //db.get_cf(&cf, b"INVITE:{payload.invite_code}").unwrap();
-
-    let invite_code = new_invite();
-    db.put_cf(&cf, format!("INVITE:{invite_code}"), &[0])
-        .unwrap();
+    let invite_code = state.repo.new_invite();
 
     (StatusCode::ACCEPTED, invite_code)
 }
@@ -262,31 +247,6 @@ async fn active_invites(
         return (StatusCode::FORBIDDEN, "ERRROR".to_owned());
     }
 
-    let db = state.db.clone();
-    let cf = db.cf_handle("invites").unwrap();
-
-    let iter = db.iterator_cf(&cf, IteratorMode::Start);
-
-    let mut result = vec![];
-    for item in iter {
-        let (k, v) = item.unwrap();
-        if v.as_ref() == &[0] {
-            result.push(k);
-        }
-    }
-
-    let results = result.iter().map(|f|String::from_utf8_lossy(f) + "\n").collect();
+    let results = state.repo.active_invites();
     (StatusCode::ACCEPTED, results)
-
-}
-
-const STRING_LEN: usize = 8;
-
-fn new_invite() -> String {
-    let random_string: String = rng()
-        .sample_iter(&Alphanumeric)
-        .take(STRING_LEN)
-        .map(char::from) // Convert the u8 samples to chars
-        .collect();
-    random_string
 }

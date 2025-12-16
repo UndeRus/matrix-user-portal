@@ -1,13 +1,12 @@
-use std::sync::Arc;
-
 use clap::{Parser};
-use rocksdb::DB;
+
+use crate::db::InvitesRepo;
 
 #[derive(Clone)]
 pub struct AppState {
     pub matrix_server_url: String,
     pub matrix_reg_token: String,
-    pub db: Arc<DB>,
+    pub repo: InvitesRepo,
     pub admin_token: String,
 }
 
